@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  secret-santa:
+    build: .
+    ports:
+      - "8003:8003"
+    environment:
+      - NODE_ENV=production
+      - PORT=8003
+      - BASE_URL=${BASE_URL}
+    restart: unless-stopped
+    container_name: secret-santa-app
+    volumes:
+      - ./data:/app/data
+    labels:
+      # Disable auto-updates - custom built image from local Dockerfile
+      # Built images cannot be auto-updated, rebuild manually when needed
+      - "com.centurylinklabs.watchtower.enable=false"
