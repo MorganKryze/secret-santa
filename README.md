@@ -17,24 +17,18 @@ A festive Secret Santa party organizer with Christmas theme and snow animations.
 
 ## Configuration
 
-The app can be configured using environment variables:
+Create a `.env` file with your settings:
 
-1. **Copy the example environment file:**
-   ```bash
-   cp .env.example .env
-   ```
+```env
+# Server port (default: 8003)
+PORT=8003
 
-2. **Edit the `.env` file:**
-   ```env
-   # Server port (default: 8003)
-   PORT=8003
-
-   # Base URL for generating guest links
-   # For local development:
-   BASE_URL=http://localhost:8003
-   # For production deployment:
-   BASE_URL=https://your-domain.com
-   ```
+# Base URL for generating guest links
+# For local development:
+BASE_URL=http://localhost:8003
+# For production deployment:
+BASE_URL=https://your-domain.com
+```
 
 **Important:** Set `BASE_URL` to your production domain when deploying, as this URL is used to generate the guest invitation links.
 
