@@ -1,0 +1,29 @@
+services:
+  secret-santa:
+    image: ghcr.io/morgankryze/secret-santa:latest
+    container_name: secret-santa-app
+    restart: unless-stopped
+    user: ${PUID:-1000}:${PGID:-1000}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - NODE_ENV=production
+      - PORT=${PORT:-8003}
+      - BASE_URL=${BASE_URL:-http://localhost:8003}
+    volumes:
+      - ${DOCKER_VOLUMES_PATH}/secret-santa/data:/app/data:rw
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+    expose:
+      - 8003
+    networks:
+      - pangolin
+    labels:
+      com.centurylinklabs.watchtower.enable: true
+
+networks:
+  pangolin:
+    external: true

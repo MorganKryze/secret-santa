@@ -1,25 +1,41 @@
 FROM node:20-alpine
 
-WORKDIR /app
+# Build arguments with defaults
+ARG TZ=Europe/Paris
+ARG PUID=1000
+ARG PGID=1000
+ARG PORT=8003
 
-# Set timezone to Australia/Sydney
-ENV TZ=Australia/Sydney
+# Set timezone
+ENV TZ=${TZ}
 RUN apk add --no-cache tzdata
+
+# Create non-root user
+RUN addgroup -g ${PGID} -S nodejs && \
+    adduser -S nodejs -u ${PUID}
+
+WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install --production
+RUN npm install --production && \
+    npm cache clean --force
 
 # Copy application code
 COPY ../ .
 
-# Create public directory if it doesn't exist
-RUN mkdir -p public
+# Create data directory with correct permissions for any non-root user
+RUN mkdir -p data public && \
+    chmod -R 755 /app && \
+    chmod -R 777 /app/data
+
+# Note: USER directive intentionally omitted - set at runtime via compose user: directive
+# This allows flexibility to run as any UID/GID specified in environment variables
 
 # Expose port
-EXPOSE 8003
+EXPOSE ${PORT}
 
 # Run the application
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
