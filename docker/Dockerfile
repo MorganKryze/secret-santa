@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --omit=dev --ignore-scripts && \
+# Install only production dependencies (use npm install since no package-lock.json)
+RUN npm install --omit=dev --ignore-scripts && \
     npm cache clean --force
 
 # Production stage - minimal runtime image
@@ -24,11 +24,12 @@ ENV TZ=${TZ} \
     NODE_ENV=production
 
 RUN apk add --no-cache tzdata && \
-    # Create non-root user
-    addgroup -g ${PGID} -S nodejs && \
-    adduser -S nodejs -u ${PUID} && \
     # Remove apk cache
-    rm -rf /var/cache/apk/*
+    rm -rf /var/cache/apk/* && \
+    # Note: node:alpine already has node user (uid=1000) and node group (gid=1000)
+    # Only create custom user/group if different from defaults
+    if [ "${PGID}" != "1000" ]; then addgroup -g ${PGID} -S appgroup; fi && \
+    if [ "${PUID}" != "1000" ]; then adduser -S appuser -u ${PUID} -G $(getent group ${PGID} | cut -d: -f1); fi
 
 WORKDIR /app
 
