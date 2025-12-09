@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="View your Secret Santa gift assignment">
+    <meta name="theme-color" content="#c41e3a">
+    <meta name="robots" content="noindex, nofollow">
     <title>Your Secret Santa Assignment</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -80,6 +83,18 @@
             text-align: center;
             box-shadow: 0 10px 30px rgba(255, 215, 0, 0.3);
         }
+        
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
     </style>
 </head>
 <body>
@@ -89,13 +104,13 @@
         <div class="christmas-card rounded-xl p-8 max-w-2xl w-full">
             <div class="text-center mb-8">
                 <h1 class="christmas-font text-5xl text-red-700 mb-4">Secret Santa</h1>
-                <div id="loading" class="text-gray-600">
-                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-700"></div>
+                <div id="loading" class="text-gray-600" role="status" aria-live="polite">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-700" aria-hidden="true"></div>
                     <p class="mt-2">Revealing your assignment...</p>
                 </div>
             </div>
             
-            <div id="assignmentResult" class="hidden">
+            <div id="assignmentResult" class="hidden" role="main" aria-live="polite">
                 <div class="secret-message reveal-animation">
                     <h3 class="christmas-font text-4xl text-red-800 mb-4">🎅 Your Secret Santa Assignment 🎄</h3>
                     <div class="text-xl font-bold text-gray-800 mb-2">
@@ -131,6 +146,12 @@
     </div>
 
     <script>
+        // Validate UUID format
+        function isValidUUID(str) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            return uuidRegex.test(str);
+        }
+        
         // Create snowflakes
         function createSnowflakes() {
             const snow = document.getElementById('snow');
@@ -155,7 +176,15 @@
         const urlParts = window.location.pathname.split('/');
         const guestId = urlParts[urlParts.length - 1];
         
-        // Load assignment
+        // Validate guest ID format
+        if (!isValidUUID(guestId)) {
+            showError();
+        }
+        
+        // Load assignment with retry
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        
         async function loadAssignment() {
             try {
                 const response = await fetch(`/api/guest/${guestId}/assignment`);
@@ -163,11 +192,21 @@
                 
                 if (response.ok) {
                     showAssignment(data);
+                } else if (response.status === 429 && retryCount < MAX_RETRIES) {
+                    // Rate limited, retry after delay
+                    retryCount++;
+                    setTimeout(loadAssignment, 2000 * retryCount);
                 } else {
                     showError();
                 }
             } catch (error) {
-                showError();
+                console.error('Error loading assignment:', error);
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    setTimeout(loadAssignment, 2000 * retryCount);
+                } else {
+                    showError();
+                }
             }
         }
         
