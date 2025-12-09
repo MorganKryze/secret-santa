@@ -55,10 +55,19 @@ const guestLinks = new Map(); // guestId -> {partyId, guestName}
 // Load data from files on startup
 async function loadData() {
   try {
-    log('info', 'Creating data directory if not exists:', { path: DATA_DIR });
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    log('info', 'Ensuring data directory exists:', { path: DATA_DIR });
+    try {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      log('info', 'Data directory created/verified');
+    } catch (mkdirError) {
+      log('error', 'Failed to create data directory:', {
+        error: mkdirError.message,
+        code: mkdirError.code
+      });
+      throw mkdirError;
+    }
     
-    // Check directory permissions
+    // Check directory permissions - CRITICAL: fail if not writable
     try {
       const stats = await fs.stat(DATA_DIR);
       log('info', 'Data directory stats:', {
@@ -69,13 +78,46 @@ async function loadData() {
         gid: stats.gid
       });
 
-      // Test write permissions
+      // Test write permissions - MANDATORY
       const testFile = path.join(DATA_DIR, '.write-test');
       await fs.writeFile(testFile, 'test');
       await fs.unlink(testFile);
-      log('info', 'Data directory is writable');
+      log('info', 'Data directory is writable ✓');
     } catch (error) {
-      log('error', 'Data directory permission check failed:', error.message);
+      log('error', 'FATAL: Data directory is not writable!', {
+        error: error.message,
+        code: error.code,
+        path: DATA_DIR,
+        processUid: process.getuid?.(),
+        processGid: process.getgid?.()
+      });
+      log('error', 'Cannot continue without writable data directory. Exiting.');
+      process.exit(1);
+    }
+
+    // Initialize empty data files if they don't exist
+    try {
+      await fs.access(PARTIES_FILE);
+      log('info', 'parties.json exists');
+    } catch {
+      log('info', 'Creating empty parties.json');
+      await fs.writeFile(PARTIES_FILE, '{}');
+    }
+
+    try {
+      await fs.access(ASSIGNMENTS_FILE);
+      log('info', 'assignments.json exists');
+    } catch {
+      log('info', 'Creating empty assignments.json');
+      await fs.writeFile(ASSIGNMENTS_FILE, '{}');
+    }
+
+    try {
+      await fs.access(GUEST_LINKS_FILE);
+      log('info', 'guest_links.json exists');
+    } catch {
+      log('info', 'Creating empty guest_links.json');
+      await fs.writeFile(GUEST_LINKS_FILE, '{}');
     }
 
     log('info', 'Loading data files...');
@@ -174,11 +216,39 @@ async function saveData() {
     });
 
     await Promise.all([
-      fs.writeFile(PARTIES_FILE, partiesData),
-      fs.writeFile(ASSIGNMENTS_FILE, assignmentsData),
-      fs.writeFile(GUEST_LINKS_FILE, guestLinksData)
+      fs.writeFile(PARTIES_FILE, partiesData).then(() =>
+        log('info', `Wrote ${PARTIES_FILE}`)
+      ).catch(err => {
+        log('error', `Failed to write ${PARTIES_FILE}:`, err.message);
+        throw err;
+      }),
+      fs.writeFile(ASSIGNMENTS_FILE, assignmentsData).then(() =>
+        log('info', `Wrote ${ASSIGNMENTS_FILE}`)
+      ).catch(err => {
+        log('error', `Failed to write ${ASSIGNMENTS_FILE}:`, err.message);
+        throw err;
+      }),
+      fs.writeFile(GUEST_LINKS_FILE, guestLinksData).then(() =>
+        log('info', `Wrote ${GUEST_LINKS_FILE}`)
+      ).catch(err => {
+        log('error', `Failed to write ${GUEST_LINKS_FILE}:`, err.message);
+        throw err;
+      })
+    ]);
+
+    // Verify files were actually written
+    const [p, a, g] = await Promise.all([
+      fs.stat(PARTIES_FILE).catch(() => null),
+      fs.stat(ASSIGNMENTS_FILE).catch(() => null),
+      fs.stat(GUEST_LINKS_FILE).catch(() => null)
     ]);
     
+    log('info', 'Files verification:', {
+      parties: p ? `${p.size} bytes` : 'MISSING!',
+      assignments: a ? `${a.size} bytes` : 'MISSING!',
+      guestLinks: g ? `${g.size} bytes` : 'MISSING!'
+    });
+
     const saveTime = Date.now() - saveStartTime;
     log('info', `Data saved successfully in ${saveTime}ms`);
   } catch (error) {
@@ -558,6 +628,18 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Pre-startup check
+(async () => {
+  try {
+    log('info', 'Pre-startup check: verifying data directory...');
+    await fs.stat(DATA_DIR).catch(async () => {
+      log('warn', 'Data directory does not exist yet, will be created on startup');
+    });
+  } catch (error) {
+    log('warn', 'Pre-startup check warning:', error.message);
+  }
+})();
+
 app.listen(PORT, '0.0.0.0', async () => {
   log('info', '=== Server Started ===');
   log('info', `Listening on http://0.0.0.0:${PORT}`);
@@ -570,9 +652,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     nodeVersion: process.version
   });
 
-  await loadData();
-
-  log('info', '=== Server Ready ===');
+  await loadData(); log('info', '=== Server Ready ===');
   log('info', 'Available routes:');
   log('info', '  GET  /');
   log('info', '  GET  /guest/:id');
