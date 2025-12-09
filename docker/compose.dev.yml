@@ -1,20 +1,18 @@
-version: '3.8'
-
 services:
   secret-santa:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    ports:
-      - "8003:8003"
+    container_name: secret-santa-app
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - PORT=8003
-      - BASE_URL=${BASE_URL}
-    restart: unless-stopped
-    container_name: secret-santa-app
+      - PORT=${PORT:-8003}
+      - BASE_URL=${BASE_URL:-http://localhost:8003}
     volumes:
       - ./data:/app/data
+    ports:
+      - "8003:8003"
     labels:
       # Disable auto-updates - custom built image from local Dockerfile
       # Built images cannot be auto-updated, rebuild manually when needed
