@@ -4,6 +4,17 @@ const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const fs = require('fs').promises;
 
+// Logging utility
+function log(level, message, data = null) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  if (data) {
+    console.log(logMessage, JSON.stringify(data, null, 2));
+  } else {
+    console.log(logMessage);
+  }
+}
+
 // Set timezone from environment variable
 const TZ = process.env.TZ || 'Australia/Sydney';
 process.env.TZ = TZ;
@@ -12,11 +23,29 @@ const app = express();
 const PORT = process.env.PORT || 8003;
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8003';
 
+// Log startup configuration
+log('info', '=== Secret Santa Application Starting ===');
+log('info', 'Configuration:', {
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  PORT: PORT,
+  BASE_URL: BASE_URL,
+  TZ: TZ,
+  CWD: process.cwd(),
+  __dirname: __dirname
+});
+
 // Persistent storage using JSON files
 const DATA_DIR = path.join(__dirname, 'data');
 const PARTIES_FILE = path.join(DATA_DIR, 'parties.json');
 const ASSIGNMENTS_FILE = path.join(DATA_DIR, 'assignments.json');
 const GUEST_LINKS_FILE = path.join(DATA_DIR, 'guest_links.json');
+
+log('info', 'Data paths configured:', {
+  DATA_DIR: DATA_DIR,
+  PARTIES_FILE: PARTIES_FILE,
+  ASSIGNMENTS_FILE: ASSIGNMENTS_FILE,
+  GUEST_LINKS_FILE: GUEST_LINKS_FILE
+});
 
 // In-memory storage
 const parties = new Map();
@@ -26,12 +55,43 @@ const guestLinks = new Map(); // guestId -> {partyId, guestName}
 // Load data from files on startup
 async function loadData() {
   try {
+    log('info', 'Creating data directory if not exists:', { path: DATA_DIR });
     await fs.mkdir(DATA_DIR, { recursive: true });
     
+    // Check directory permissions
+    try {
+      const stats = await fs.stat(DATA_DIR);
+      log('info', 'Data directory stats:', {
+        exists: true,
+        isDirectory: stats.isDirectory(),
+        mode: stats.mode.toString(8),
+        uid: stats.uid,
+        gid: stats.gid
+      });
+
+      // Test write permissions
+      const testFile = path.join(DATA_DIR, '.write-test');
+      await fs.writeFile(testFile, 'test');
+      await fs.unlink(testFile);
+      log('info', 'Data directory is writable');
+    } catch (error) {
+      log('error', 'Data directory permission check failed:', error.message);
+    }
+
+    log('info', 'Loading data files...');
     const [partiesData, assignmentsData, guestLinksData] = await Promise.all([
-      fs.readFile(PARTIES_FILE, 'utf8').catch(() => '{}'),
-      fs.readFile(ASSIGNMENTS_FILE, 'utf8').catch(() => '{}'),
-      fs.readFile(GUEST_LINKS_FILE, 'utf8').catch(() => '{}')
+      fs.readFile(PARTIES_FILE, 'utf8').catch(err => {
+        log('warn', 'Could not read parties.json:', err.code);
+        return '{}';
+      }),
+      fs.readFile(ASSIGNMENTS_FILE, 'utf8').catch(err => {
+        log('warn', 'Could not read assignments.json:', err.code);
+        return '{}';
+      }),
+      fs.readFile(GUEST_LINKS_FILE, 'utf8').catch(err => {
+        log('warn', 'Could not read guest_links.json:', err.code);
+        return '{}';
+      })
     ]);
     
     // Safe JSON parsing with fallback
@@ -41,29 +101,33 @@ async function loadData() {
     
     try {
       partiesObj = JSON.parse(partiesData);
+      log('info', `Loaded ${Object.keys(partiesObj).length} parties`);
     } catch (e) {
-      console.error('Corrupted parties.json, starting fresh');
+      log('error', 'Corrupted parties.json, starting fresh:', e.message);
     }
     
     try {
       assignmentsObj = JSON.parse(assignmentsData);
+      log('info', `Loaded ${Object.keys(assignmentsObj).length} assignments`);
     } catch (e) {
-      console.error('Corrupted assignments.json, starting fresh');
+      log('error', 'Corrupted assignments.json, starting fresh:', e.message);
     }
     
     try {
       guestLinksObj = JSON.parse(guestLinksData);
+      log('info', `Loaded ${Object.keys(guestLinksObj).length} guest links`);
     } catch (e) {
-      console.error('Corrupted guest_links.json, starting fresh');
+      log('error', 'Corrupted guest_links.json, starting fresh:', e.message);
     }
     
     Object.entries(partiesObj).forEach(([key, value]) => parties.set(key, value));
     Object.entries(assignmentsObj).forEach(([key, value]) => assignments.set(key, value));
     Object.entries(guestLinksObj).forEach(([key, value]) => guestLinks.set(key, value));
     
-    console.log('Data loaded successfully');
+    log('info', 'Data loaded successfully to memory');
   } catch (error) {
-    console.error('Error loading data:', error);
+    log('error', 'Error loading data:', error.message);
+    log('error', 'Stack trace:', error.stack);
   }
 }
 
@@ -71,12 +135,14 @@ async function loadData() {
 let saveInProgress = false;
 async function saveData() {
   if (saveInProgress) {
-    console.log('Save already in progress, skipping');
+    log('warn', 'Save already in progress, skipping');
     return;
   }
   
   saveInProgress = true;
+  const saveStartTime = Date.now();
   try {
+    log('info', 'Starting save operation...');
     // Create backup before overwriting
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupDir = path.join(DATA_DIR, 'backups');
@@ -101,15 +167,23 @@ async function saveData() {
     const assignmentsData = JSON.stringify(Object.fromEntries(assignments), null, 2);
     const guestLinksData = JSON.stringify(Object.fromEntries(guestLinks), null, 2);
     
+    log('info', 'Writing data files:', {
+      partiesSize: partiesData.length,
+      assignmentsSize: assignmentsData.length,
+      guestLinksSize: guestLinksData.length
+    });
+
     await Promise.all([
       fs.writeFile(PARTIES_FILE, partiesData),
       fs.writeFile(ASSIGNMENTS_FILE, assignmentsData),
       fs.writeFile(GUEST_LINKS_FILE, guestLinksData)
     ]);
     
-    console.log('Data saved successfully');
+    const saveTime = Date.now() - saveStartTime;
+    log('info', `Data saved successfully in ${saveTime}ms`);
   } catch (error) {
-    console.error('Error saving data:', error);
+    log('error', 'Error saving data:', error.message);
+    log('error', 'Stack trace:', error.stack);
   } finally {
     saveInProgress = false;
   }
@@ -156,6 +230,19 @@ function isRateLimited(clientId) {
   return false;
 }
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    log('info', `${req.method} ${req.path} ${res.statusCode} ${duration}ms`, {
+      ip: req.ip,
+      userAgent: req.get('user-agent')?.substring(0, 50)
+    });
+  });
+  next();
+});
+
 // Security headers
 app.use((req, res, next) => {
   // Content Security Policy
@@ -182,7 +269,20 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json({ limit: '10kb' })); // Reduced from 10mb
-app.use(express.static('public', {
+
+// Log static file directory
+const publicDir = path.join(__dirname, 'public');
+log('info', 'Public directory path:', { publicDir });
+fs.stat(publicDir).then(stats => {
+  log('info', 'Public directory exists:', { isDirectory: stats.isDirectory() });
+  return fs.readdir(publicDir);
+}).then(files => {
+  log('info', 'Public directory contents:', files);
+}).catch(err => {
+  log('error', 'Public directory not accessible:', err.message);
+});
+
+app.use(express.static(publicDir, {
   maxAge: '1d',
   etag: true,
   lastModified: true
@@ -196,12 +296,15 @@ app.get('/', (req, res) => {
 // Create a new party
 app.post('/api/parties', async (req, res) => {
   try {
+    log('info', 'Party creation request received');
     const clientId = req.ip || req.connection.remoteAddress;
     if (isRateLimited(clientId)) {
+      log('warn', 'Rate limit exceeded for client:', { clientId });
       return res.status(429).json({ error: 'Too many requests. Please wait a minute.' });
     }
 
     const { name, budget, criteria, guests } = req.body;
+    log('info', 'Party details:', { name, guestCount: guests?.length });
     
     if (!name || !guests || !Array.isArray(guests) || guests.length < 2) {
       return res.status(400).json({ error: 'Party name and at least 2 guests are required' });
@@ -262,6 +365,7 @@ app.post('/api/parties', async (req, res) => {
       guestUrls[guest] = `${BASE_URL}/guest/${guestId}`;
     });
     
+    log('info', 'Party created successfully:', { partyId, guestCount: party.guests.length });
     await saveData();
     
     res.json({ 
@@ -270,7 +374,7 @@ app.post('/api/parties', async (req, res) => {
       party 
     });
   } catch (error) {
-    console.error('Error creating party:', error);
+    log('error', 'Error creating party:', error.message);
     res.status(400).json({ error: error.message || 'Invalid request data' });
   }
 });
@@ -435,7 +539,45 @@ app.get('/guest/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'guest.html'));
 });
 
+// 404 handler for debugging
+app.use((req, res) => {
+  log('warn', `404 Not Found: ${req.method} ${req.url}`, {
+    ip: req.ip,
+    headers: req.headers
+  });
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  log('error', 'Unhandled error:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url
+  });
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Secret Santa app running on http://0.0.0.0:${PORT}`);
+  log('info', '=== Server Started ===');
+  log('info', `Listening on http://0.0.0.0:${PORT}`);
+  log('info', `Access URL: ${BASE_URL}`);
+  log('info', 'Process info:', {
+    pid: process.pid,
+    uid: process.getuid?.(),
+    gid: process.getgid?.(),
+    platform: process.platform,
+    nodeVersion: process.version
+  });
+
   await loadData();
+
+  log('info', '=== Server Ready ===');
+  log('info', 'Available routes:');
+  log('info', '  GET  /');
+  log('info', '  GET  /guest/:id');
+  log('info', '  POST /api/parties');
+  log('info', '  GET  /api/parties/:id');
+  log('info', '  POST /api/parties/:id/assign');
+  log('info', '  GET  /api/guest/:id/assignment');
 });
