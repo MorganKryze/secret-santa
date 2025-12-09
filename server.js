@@ -4,8 +4,9 @@ const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const fs = require('fs').promises;
 
-// Set timezone to Australia/Sydney
-process.env.TZ = 'Australia/Sydney';
+// Set timezone from environment variable
+const TZ = process.env.TZ || 'Australia/Sydney';
+process.env.TZ = TZ;
 
 const app = express();
 const PORT = process.env.PORT || 8003;
@@ -237,7 +238,7 @@ app.post('/api/parties', async (req, res) => {
       criteria: sanitizedCriteria,
       guests: sanitizedGuests,
       createdAt: new Date().toLocaleString('en-AU', { 
-        timeZone: 'Australia/Sydney',
+        timeZone: TZ,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -245,7 +246,7 @@ app.post('/api/parties', async (req, res) => {
         minute: '2-digit',
         second: '2-digit',
         hour12: false
-      }) + ' AEDT'
+      })
     };
 
     parties.set(partyId, party);
