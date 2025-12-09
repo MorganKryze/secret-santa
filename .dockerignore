@@ -12,3 +12,4 @@ coverage
 .cache/
 dist/
 build/
+docker/

@@ -35,8 +35,9 @@ BASE_URL=https://your-domain.com
 ## Quick Start with Docker
 
 1. **Build and run with Docker Compose:**
+
    ```bash
-   docker-compose up --build
+   docker-compose -f docker/compose.dev.yml up --build
    ```
 
 2. **Access the app:**
@@ -45,11 +46,13 @@ BASE_URL=https://your-domain.com
 ## Manual Installation
 
 1. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 2. **Start the server:**
+
    ```bash
    npm start
    ```
@@ -62,12 +65,14 @@ BASE_URL=https://your-domain.com
 ## Usage
 
 1. **Create a Party:**
+
    - Visit the main page
    - Enter party name, budget (optional), and criteria (optional)
    - Add guest names (minimum 2, include yourself if participating!)
    - Click "Create Secret Santa Party"
 
 2. **Share with Guests:**
+
    - Copy the individual personal links for each guest
    - Each person gets their own unique link
    - The party creator uses their personal link just like everyone else
@@ -93,7 +98,7 @@ The app is configured to run on `0.0.0.0:8003` using Docker:
 - **Container Name:** secret-santa-app
 - **Restart Policy:** unless-stopped
 
-**For Production:** Update the `BASE_URL` environment variable in `docker-compose.yml` to your actual domain before deploying.
+**For Production:** Update the `BASE_URL` environment variable in `docker/compose.dev.yml` to your actual domain before deploying.
 
 ## Notes
 
