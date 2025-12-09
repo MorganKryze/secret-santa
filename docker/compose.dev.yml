@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: secret-santa-app
+    container_name: secret-santa
     restart: unless-stopped
     environment:
       - NODE_ENV=production

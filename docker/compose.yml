@@ -1,7 +1,7 @@
 services:
   secret-santa:
     image: ghcr.io/morgankryze/secret-santa:latest
-    container_name: secret-santa-app
+    container_name: secret-santa
     restart: unless-stopped
     user: ${PUID:-1000}:${PGID:-1000}
     read_only: true
