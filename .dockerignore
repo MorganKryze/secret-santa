@@ -12,5 +12,6 @@ coverage
 .cache/
 dist/
 build/
-docker/
 .github/
+docker/compose*.yml
+docker/data
